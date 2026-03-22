@@ -1,7 +1,8 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include "lexer.h"
 #include "utils.h"
-#include <stdlib.h>
+#include "parser.h"
 
 int main(){
     FILE *fout = fopen("textLexTokens.txt","w");
@@ -14,6 +15,9 @@ int main(){
     Token *tks = tokenize(buffer);
     //printTokens(tks);
     writeTokens(tks, fout);
+
+    parse(tks);
+    printf("Parsing succesful!\n");
 
     free(buffer);
     fclose(fout);

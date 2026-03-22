@@ -8,6 +8,34 @@
 Token *iTk;		// the iterator in the tokens list
 Token *consumedTk;		// the last consumed token
 
+bool structDef();
+bool fnDef();
+bool varDef();
+bool stmCompound();
+bool stm();
+bool expr();
+bool exprAssign();
+bool exprOr();
+bool exprOrPrim();
+bool exprAnd();
+bool exprAndPrim();
+bool exprEq();
+bool exprEqPrim();
+bool exprRel();
+bool exprRelPrim();
+bool exprAdd();
+bool exprAddPrim();
+bool exprMul();
+bool exprMulPrim();
+bool exprCast();
+bool exprUnary();
+bool exprPostfix();
+bool exprPostfixPrim();
+bool exprPrimary();
+bool typeBase();
+bool arrayDecl();
+bool fnParam();
+
 void tkerr(const char *fmt,...){
 	fprintf(stderr,"error in line %d: ",iTk->line);
 	va_list va;
@@ -16,7 +44,7 @@ void tkerr(const char *fmt,...){
 	va_end(va);
 	fprintf(stderr,"\n");
 	exit(EXIT_FAILURE);
-	}
+}
 
 bool consume(int code){
 	if(iTk->code==code){
@@ -25,7 +53,7 @@ bool consume(int code){
 		return true;
 		}
 	return false;
-	}
+}
 
 // typeBase: TYPE_INT | TYPE_DOUBLE | TYPE_CHAR | STRUCT ID
 bool typeBase(){
@@ -44,7 +72,7 @@ bool typeBase(){
 			}
 		}
 	return false;
-	}
+}
 
 // unit: ( structDef | fnDef | varDef )* END
 bool unit(){
@@ -58,7 +86,65 @@ bool unit(){
 		return true;
 		}
 	return false;
+}
+
+//[int]
+bool arrayDecl(){
+	Token *start=iTk;
+	if(consume(LBRACKET)){
+		consume(INT);
+		if(consume(RBRACKET)) return true;
+		tkerr("] missing.\n");
 	}
+	iTk = start;
+	return false;
+}
+
+//var declaration
+bool varDef(){
+	Token *start = iTk;
+	if(typeBase()){
+		if(consume(ID)){
+			arrayDecl();
+			if(consume(SEMICOLON)) return true;
+			tkerr("; missing.\n");
+		}
+	}
+	iTk=start;
+	return false;
+}
+
+//struct def
+bool structDef() {
+    Token *start = iTk;
+    if (consume(STRUCT)) {
+        if (consume(ID)) {
+            if (consume(LACC)) {
+                while (varDef()) {}
+                if (consume(RACC)) {
+                    if (consume(SEMICOLON)) return true;
+                    tkerr("; missing after }");
+                }
+                tkerr("} missing in struct.\n");
+            }
+        }
+    }
+    iTk = start;
+    return false;
+}
+
+//function parameter
+bool fnParam(){
+	Token *start = iTk;
+	if(typeBase()){
+		if(consume(ID)){
+			arrayDecl();
+			return true;
+		}
+	}
+	iTk=start;
+	return false;
+}
 
 void parse(Token *tokens){
 	iTk=tokens;
