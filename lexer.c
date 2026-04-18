@@ -215,7 +215,7 @@ void printTokens(const Token *tokens){
 			case WHILE:      printf("%d\tWHILE\n",        tk->line);break;
 			case RETURN:     printf("%d\tRETURN\n",       tk->line);break;
 			case COMMA:      printf("%d\tCOMMA\n",        tk->line);break;
-			case SEMICOLON:  printf("%d\tSEMICOLON\n",   tk->line);break;
+			case SEMICOLON:  printf("%d\tSEMICOLON\n",    tk->line);break;
 			case LPAR:       printf("%d\tLPAR\n",         tk->line);break;
 			case RPAR:       printf("%d\tRPAR\n",         tk->line);break;
 			case LBRACKET:   printf("%d\tLBRACKET\n",     tk->line);break;
@@ -236,7 +236,7 @@ void printTokens(const Token *tokens){
 			case LESS:       printf("%d\tLESS\n",         tk->line);break;
 			case LESSEQ:     printf("%d\tLESSEQ\n",       tk->line);break;
 			case GREATER:    printf("%d\tGREATER\n",      tk->line);break;
-			case GREATEREQ:  printf("%d\tGREATEREQ\n",   tk->line);break;
+			case GREATEREQ:  printf("%d\tGREATEREQ\n",    tk->line);break;
 			case INT:        printf("%d\tINT:%d\n",       tk->line,tk->i);break;
 			case DOUBLE:     printf("%d\tDOUBLE:%g\n",    tk->line,tk->d);break;
 			case CHAR:       printf("%d\tCHAR:%c\n",      tk->line,tk->c);break;
@@ -261,7 +261,7 @@ void writeTokens(const Token *tokens, FILE *fout){
 			case WHILE:      fprintf(fout,"%d\tWHILE\n",        tk->line);break;
 			case RETURN:     fprintf(fout,"%d\tRETURN\n",       tk->line);break;
 			case COMMA:      fprintf(fout,"%d\tCOMMA\n",        tk->line);break;
-			case SEMICOLON:  fprintf(fout,"%d\tSEMICOLON\n",   tk->line);break;
+			case SEMICOLON:  fprintf(fout,"%d\tSEMICOLON\n",    tk->line);break;
 			case LPAR:       fprintf(fout,"%d\tLPAR\n",         tk->line);break;
 			case RPAR:       fprintf(fout,"%d\tRPAR\n",         tk->line);break;
 			case LBRACKET:   fprintf(fout,"%d\tLBRACKET\n",     tk->line);break;
@@ -282,7 +282,7 @@ void writeTokens(const Token *tokens, FILE *fout){
 			case LESS:       fprintf(fout,"%d\tLESS\n",         tk->line);break;
 			case LESSEQ:     fprintf(fout,"%d\tLESSEQ\n",       tk->line);break;
 			case GREATER:    fprintf(fout,"%d\tGREATER\n",      tk->line);break;
-			case GREATEREQ:  fprintf(fout,"%d\tGREATEREQ\n",   tk->line);break;
+			case GREATEREQ:  fprintf(fout,"%d\tGREATEREQ\n",    tk->line);break;
 			case INT:        fprintf(fout,"%d\tINT:%d\n",       tk->line,tk->i);break;
 			case DOUBLE:     fprintf(fout,"%d\tDOUBLE:%g\n",    tk->line,tk->d);break;
 			case CHAR:       fprintf(fout,"%d\tCHAR:%c\n",      tk->line,tk->c);break;
