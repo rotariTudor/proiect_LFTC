@@ -119,7 +119,6 @@ Token *tokenize(const char *pch){
 				break;
 			case '"':{
 				pch++;
-				// calculam lungimea cu escape processing
 				int len=0;
 				const char *tmp=pch;
 				while(*tmp&&*tmp!='"'){
@@ -128,7 +127,6 @@ Token *tokenize(const char *pch){
 					len++;
 				}
 				if(*tmp!='"')err("missing closing \"");
-				// alocam si copiem cu escape processing
 				char *str=(char*)malloc(len+1);
 				if(!str)err("not enough memory");
 				int idx=0;
@@ -178,10 +176,20 @@ Token *tokenize(const char *pch){
 					start=pch;
 					while(isdigit(*pch))pch++;
 					if(*pch=='.'||*pch=='e'||*pch=='E'){
-						if(*pch=='.'){pch++;while(isdigit(*pch))pch++;}
+						if(*pch=='.'){
+							pch++;
+							int aux = *pch;
+							while(isdigit(*pch))pch++;
+							if(aux==*pch){
+								err("missing at least 1 number after point at line -> %d.\n",line);
+							}
+						}
 						if(*pch=='e'||*pch=='E'){
 							pch++;
 							if(*pch=='+'||*pch=='-')pch++;
+							if(!isdigit(*pch)){
+								err("number missing after sign of exponent at line -> %d.\n",line);
+							}
 							while(isdigit(*pch))pch++;
 						}
 						tk=addTk(DOUBLE);
@@ -238,7 +246,7 @@ void printTokens(const Token *tokens){
 			case GREATER:    printf("%d\tGREATER\n",      tk->line);break;
 			case GREATEREQ:  printf("%d\tGREATEREQ\n",    tk->line);break;
 			case INT:        printf("%d\tINT:%d\n",       tk->line,tk->i);break;
-			case DOUBLE:     printf("%d\tDOUBLE:%g\n",    tk->line,tk->d);break;
+			case DOUBLE:     printf("%d\tDOUBLE:%.2f\n",    tk->line,tk->d);break;
 			case CHAR:       printf("%d\tCHAR:%c\n",      tk->line,tk->c);break;
 			case STRING:     printf("%d\tSTRING:%s\n",    tk->line,tk->text);break;
 			case END:        printf("%d\tEND\n",          tk->line);break;
@@ -284,7 +292,7 @@ void writeTokens(const Token *tokens, FILE *fout){
 			case GREATER:    fprintf(fout,"%d\tGREATER\n",      tk->line);break;
 			case GREATEREQ:  fprintf(fout,"%d\tGREATEREQ\n",    tk->line);break;
 			case INT:        fprintf(fout,"%d\tINT:%d\n",       tk->line,tk->i);break;
-			case DOUBLE:     fprintf(fout,"%d\tDOUBLE:%g\n",    tk->line,tk->d);break;
+			case DOUBLE:     fprintf(fout,"%d\tDOUBLE:%.2f\n",    tk->line,tk->d);break;
 			case CHAR:       fprintf(fout,"%d\tCHAR:%c\n",      tk->line,tk->c);break;
 			case STRING:     fprintf(fout,"%d\tSTRING:%s\n",    tk->line,tk->text);break;
 			case END:        fprintf(fout,"%d\tEND\n",          tk->line);break;

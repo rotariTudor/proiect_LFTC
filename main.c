@@ -16,7 +16,6 @@ int main(){
     //printTokens(tks);
     writeTokens(tks, fout);
 
-    //parse(tks);
     printf("Tokenize process is done!\n");
 
     free(buffer);
