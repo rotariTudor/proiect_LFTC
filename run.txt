@@ -1,0 +1,2 @@
+gcc -o main lexer.c parser.c utils.c main.c
+./main

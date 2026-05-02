@@ -5,21 +5,22 @@
 #include "parser.h"
 
 int main(){
-    FILE *fout = fopen("textLexTokens.txt","w");
+    FILE *fout = fopen("testParser.txt","w");
     if(!fout){
         printf("Unable to open file to write.\n");
         return 1;
     }
 
-    char *buffer = loadFile("tests/testlex.c");
+    char *buffer = loadFile("tests/testparser.c");
     Token *tks = tokenize(buffer);
-    //printTokens(tks);
     writeTokens(tks, fout);
+    fclose(fout);
 
     printf("Tokenize process is done!\n");
 
+    parse(tks);
+    printf("Parsing successful!\n");
+
     free(buffer);
-    fclose(fout);
-    
     return 0;
 }
