@@ -57,15 +57,16 @@ bool consume(int code){
 
 // typeBase: TYPE_INT | TYPE_DOUBLE | TYPE_CHAR | STRUCT ID
 bool typeBase(){
-	if(consume(TYPE_INT)) return true;
-	if(consume(TYPE_DOUBLE)) return true;
-	if(consume(TYPE_CHAR)) return true;
-	if(consume(STRUCT)){
-		if(consume(ID)) return true;
-		tkerr("identifier missing after struct");
-		}
-	return false;
-	}
+    if(consume(TYPE_INT))    return true;
+    if(consume(TYPE_DOUBLE)) return true;
+    if(consume(TYPE_CHAR))   return true;
+    if(consume(STRUCT)){
+        if(consume(ID)) return true;
+        tkerr("identifier missing after struct");
+    }
+    return false;
+}
+
 
 // arrayDecl: LBRACKET INT? RBRACKET
 bool arrayDecl(){
@@ -88,6 +89,9 @@ bool varDef(){
 			if(consume(SEMICOLON)) return true;
 			tkerr("; missing after variable declaration");
 			}
+			else{
+				tkerr("missing identifier when declaring a variable");
+			}
 		}
 	iTk=start;
 	return false;
@@ -106,14 +110,15 @@ bool structDef(){
 					}
 				tkerr("} missing in struct");
 				}
-			iTk=start;
-			return false;
+			else if(varDef()){
+				tkerr("{ missing in struct");
 			}
-		tkerr("identifier missing after struct keyword");
 		}
-	iTk=start;
-	return false;
+		iTk = start;
+		return false;
 	}
+	return false;
+}
 
 // fnParam: typeBase ID arrayDecl?
 bool fnParam(){
