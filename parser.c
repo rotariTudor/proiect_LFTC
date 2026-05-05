@@ -67,57 +67,53 @@ bool typeBase(){
     return false;
 }
 
-
-// arrayDecl: LBRACKET INT? RBRACKET
-bool arrayDecl(){
-	Token *start=iTk;
-	if(consume(LBRACKET)){
-		consume(INT);
-		if(consume(RBRACKET)) return true;
-		tkerr("] missing in array declaration");
-	}
-	iTk=start;
-	return false;
+// varDef: typeBase ID arrayDecl? SEMICOLON
+bool varDef() {
+    Token *start = iTk;
+    if (typeBase()) {
+        if (consume(ID)) {
+            arrayDecl();
+            if (consume(SEMICOLON)) {
+                return true;
+            } else tkerr("Missing ; after variable definition");
+        }
+		else tkerr("Missing ID after type or invalid struct/function declaration");
+    }
+    iTk = start;
+    return false;
 }
 
-// varDef: typeBase ID arrayDecl? SEMICOLON
-bool varDef(){
-	Token *start=iTk;
-	if(typeBase()){
-		if(consume(ID)){
-			arrayDecl();
-			if(consume(SEMICOLON)) return true;
-			tkerr("; missing after variable declaration");
-		}
-		else{
-			tkerr("missing identifier when declaring a variable");
-		}
-	}
-	iTk=start;
-	return false;
+// arrayDecl: LBRACKET INT? RBRACKET
+bool arrayDecl() {
+    Token *start = iTk;
+    if (consume(LBRACKET)) {
+        consume(INT);
+        if (consume(RBRACKET)) {
+            return true;
+        } else tkerr("Missing ] in array declaration");
+    }
+    iTk = start;
+    return false;
 }
 
 // structDef: STRUCT ID LACC varDef* RACC SEMICOLON
-bool structDef(){
-	Token *start=iTk;
-	if(consume(STRUCT)){
-		if(consume(ID)){
-			if(consume(LACC)){
-				while(varDef()){}
-				if(consume(RACC)){
-					if(consume(SEMICOLON)) return true;
-					tkerr("; missing after } in struct");
-				}
-				tkerr("} missing in struct");
-			}
-			else if(varDef()){
-				tkerr("{ missing in struct");
-			}
-		}
-		iTk = start;
-		return false;
-	}
-	return false;
+bool structDef() {
+    Token *start = iTk;
+    if (consume(STRUCT)) {
+        if (consume(ID)) {
+            if (consume(LACC)) {
+                while (varDef()) {} 
+                if (consume(RACC)) {
+                    if (consume(SEMICOLON)) {
+                        return true;
+                    } else tkerr("Missing ; after struct definition");
+                } else tkerr("Missing } in struct definition");
+			} 
+		} 
+		else tkerr("Missing ID after struct");
+    }
+    iTk = start;
+    return false;
 }
 
 // fnParam: typeBase ID arrayDecl?
