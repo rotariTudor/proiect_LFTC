@@ -11,7 +11,7 @@ int main(){
         return 1;
     }
 
-    char *buffer = loadFile("tests/testparser.c");
+    char *buffer = loadFile("tests/testad.c");
     Token *tks = tokenize(buffer);
     writeTokens(tks, fout);
     fclose(fout);
@@ -19,7 +19,7 @@ int main(){
     printf("Tokenize process is done!\n");
 
     parse(tks);
-    printf("Parsing successful!\n");
+    printf("Parsing and domain analysis successful!\n");
 
     free(buffer);
     return 0;

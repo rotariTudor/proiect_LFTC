@@ -4,14 +4,19 @@
 #include <stdbool.h>
 
 #include "parser.h"
+#include "utils.h"
+#include "ad.c"
 
 Token *iTk;
 Token *consumedTk;
 
+// variabila globala owner: functia sau structura in interiorul careia suntem
+Symbol *owner = NULL;
+
 bool structDef();
 bool fnDef();
 bool varDef();
-bool stmCompound();
+bool stmCompound(bool newDomain);
 bool stm();
 bool expr();
 bool exprAssign();
@@ -32,8 +37,8 @@ bool exprUnary();
 bool exprPostfix();
 bool exprPostfixPrim();
 bool exprPrimary();
-bool typeBase();
-bool arrayDecl();
+bool typeBase(Type *t);
+bool arrayDecl(Type *t);
 bool fnParam();
 
 void tkerr(const char *fmt,...){
@@ -56,72 +61,140 @@ bool consume(int code){
 }
 
 // typeBase: TYPE_INT | TYPE_DOUBLE | TYPE_CHAR | STRUCT ID
-bool typeBase(){
-    if(consume(TYPE_INT))    return true;
-    if(consume(TYPE_DOUBLE)) return true;
-    if(consume(TYPE_CHAR))   return true;
-    if(consume(STRUCT)){
-        if(consume(ID)) return true;
-        tkerr("identifier missing after struct");
-    }
-    return false;
-}
-
-// varDef: typeBase ID arrayDecl? SEMICOLON
-bool varDef() {
-    Token *start = iTk;
-    if (typeBase()) {
-        if (consume(ID)) {
-            arrayDecl();
-            if (consume(SEMICOLON)) {
-                return true;
-            } else tkerr("Missing ; after variable definition");
-        }
-		else tkerr("Missing ID after type or invalid struct/function declaration");
-    }
-    iTk = start;
-    return false;
+// AD: seteaza campurile din *t
+bool typeBase(Type *t){
+	t->n=-1;
+	if(consume(TYPE_INT))    { t->tb=TB_INT; return true; }
+	if(consume(TYPE_DOUBLE)) { t->tb=TB_DOUBLE; return true; }
+	if(consume(TYPE_CHAR))   { t->tb=TB_CHAR; return true; }
+	if(consume(STRUCT)){
+		if(consume(ID)){
+			Token *tkName=consumedTk;
+			t->tb=TB_STRUCT;
+			t->s=findSymbol(tkName->text);
+			if(!t->s) tkerr("structura nedefinita: %s",tkName->text);
+			return true;
+		}
+		tkerr("identifier missing after struct");
+	}
+	return false;
 }
 
 // arrayDecl: LBRACKET INT? RBRACKET
-bool arrayDecl() {
-    Token *start = iTk;
-    if (consume(LBRACKET)) {
-        consume(INT);
-        if (consume(RBRACKET)) {
-            return true;
-        } else tkerr("Missing ] in array declaration");
-    }
-    iTk = start;
-    return false;
+// AD: seteaza t->n (dimensiunea sau 0 daca lipseste)
+bool arrayDecl(Type *t){
+	Token *start=iTk;
+	if(consume(LBRACKET)){
+		if(consume(INT)){
+			Token *tkSize=consumedTk;
+			t->n=tkSize->i;
+		} else {
+			t->n=0;
+		}
+		if(consume(RBRACKET)){
+			return true;
+		} else tkerr("Missing ] in array declaration");
+	}
+	iTk=start;
+	return false;
 }
 
+// varDef: typeBase ID arrayDecl? SEMICOLON
+// AD: verifica redefinire, adauga simbol in TS
+bool varDef(){
+	Token *start=iTk;
+	Type t;
+	if(typeBase(&t)){
+		if(consume(ID)){
+			Token *tkName=consumedTk;
+			if(arrayDecl(&t)){
+				if(t.n==0) tkerr("a vector variable must have a specified dimension");
+			}
+			if(consume(SEMICOLON)){
+				Symbol *var=findSymbolInDomain(symTable,tkName->text);
+				if(var) tkerr("symbol redefinition: %s",tkName->text);
+				var=newSymbol(tkName->text,SK_VAR);
+				var->type=t;
+				var->owner=owner;
+				addSymbolToDomain(symTable,var);
+				if(owner){
+					switch(owner->kind){
+						case SK_FN:
+							var->varIdx=symbolsLen(owner->fn.locals);
+							addSymbolToList(&owner->fn.locals,dupSymbol(var));
+							break;
+						case SK_STRUCT:
+							var->varIdx=typeSize(&owner->type);
+							addSymbolToList(&owner->structMembers,dupSymbol(var));
+							break;
+						default: break;
+					}
+				} else {
+					var->varMem=safeAlloc(typeSize(&t));
+				}
+				return true;
+			} else tkerr("Missing ; after variable definition");
+		}
+		else tkerr("Missing Identificator after type or invalid struct/function declaration");
+	}
+	iTk=start;
+	return false;
+}
+
+// arrayDecl: LBRACKET INT? RBRACKET
 // structDef: STRUCT ID LACC varDef* RACC SEMICOLON
-bool structDef() {
-    Token *start = iTk;
-    if (consume(STRUCT)) {
-        if (consume(ID)) {
-            if (consume(LACC)) {
-                while (varDef()) {} 
-                if (consume(RACC)) {
-                    if (consume(SEMICOLON)) {
-                        return true;
-                    } else tkerr("Missing ; after struct definition");
-                } else tkerr("Missing } in struct definition");
-			} 
-		} 
+// AD: verifica redefinire, adauga SK_STRUCT, pushDomain, owner=s
+bool structDef(){
+	Token *start=iTk;
+	if(consume(STRUCT)){
+		if(consume(ID)){
+			Token *tkName=consumedTk;
+			if(consume(LACC)){
+				Symbol *s=findSymbolInDomain(symTable,tkName->text);
+				if(s) tkerr("symbol redefinition: %s",tkName->text);
+				s=addSymbolToDomain(symTable,newSymbol(tkName->text,SK_STRUCT));
+				s->type.tb=TB_STRUCT;
+				s->type.s=s;
+				s->type.n=-1;
+				pushDomain();
+				owner=s;
+
+				while(varDef()){}
+
+				if(consume(RACC)){
+					if(consume(SEMICOLON)){
+						owner=NULL;
+						dropDomain();
+						return true;
+					} else tkerr("Missing ; after struct definition");
+				} else tkerr("Missing } in struct definition");
+			}
+		}
 		else tkerr("Missing ID after struct");
-    }
-    iTk = start;
-    return false;
+	}
+	iTk=start;
+	return false;
 }
 
 // fnParam: typeBase ID arrayDecl?
+// AD: verifica redefinire, adauga SK_PARAM in domeniu si in fn.params
 bool fnParam(){
 	Token *start=iTk;
-	if(typeBase()){
+	Type t;
+	if(typeBase(&t)){
 		if(consume(ID)){
-			arrayDecl();
+			Token *tkName=consumedTk;
+			if(arrayDecl(&t)){
+				t.n=0;	// parametrii vectori devin fara dimensiune specificata
+			}
+			Symbol *param=findSymbolInDomain(symTable,tkName->text);
+			if(param) tkerr("symbol redefinition: %s",tkName->text);
+			param=newSymbol(tkName->text,SK_PARAM);
+			param->type=t;
+			param->owner=owner;
+			param->paramIdx=symbolsLen(owner->fn.params);
+			addSymbolToDomain(symTable,param);
+			addSymbolToList(&owner->fn.params,dupSymbol(param));
 			return true;
 		}
 		tkerr("identifier missing in function parameter");
@@ -185,19 +258,24 @@ bool exprPostfix(){
 
 // exprUnary: ( SUB | NOT ) exprUnary | exprPostfix
 bool exprUnary(){
-	if(consume(SUB)||consume(NOT)){
+	if(consume(SUB)){
 		if(exprUnary()) return true;
-		tkerr("expression missing after unary operator");
+		tkerr("expression missing after unary operator (SUB)");
+	}else if(consume(NOT)){
+		if(exprUnary()) return true;
+		tkerr("expression missing after unary operator(NOT)");
 	}
 	return exprPostfix();
 }
 
 // exprCast: LPAR typeBase arrayDecl? RPAR exprCast | exprUnary
+// AD: typeBase si arrayDecl au nevoie de un Type t local
 bool exprCast(){
 	Token *start=iTk;
 	if(consume(LPAR)){
-		if(typeBase()){
-			arrayDecl();
+		Type t;
+		if(typeBase(&t)){
+			arrayDecl(&t);
 			if(consume(RPAR)){
 				if(exprCast()) return true;
 				tkerr("expression missing after cast");
@@ -211,9 +289,13 @@ bool exprCast(){
 
 // exprMulPrim: ( MUL | DIV ) exprCast exprMulPrim | epsilon
 bool exprMulPrim(){
-	if(consume(MUL)||consume(DIV)){
+	if(consume(MUL)){
 		if(exprCast()) return exprMulPrim();
-		tkerr("expression missing after * or /");
+		tkerr("expression missing after *");
+	}
+	else if(consume(DIV)){
+		if(exprCast()) return exprMulPrim();
+		tkerr("expression missing after /");
 	}
 	return true;
 }
@@ -226,9 +308,12 @@ bool exprMul(){
 
 // exprAddPrim: ( ADD | SUB ) exprMul exprAddPrim | epsilon
 bool exprAddPrim(){
-	if(consume(ADD)||consume(SUB)){
+	if(consume(ADD)){
 		if(exprMul()) return exprAddPrim();
-		tkerr("expression missing after + or -");
+		tkerr("expression missing after +");
+	}else if(consume(SUB)){
+		if(exprMul()) return exprAddPrim();
+		tkerr("expression missing after -");
 	}
 	return true;
 }
@@ -241,7 +326,19 @@ bool exprAdd(){
 
 // exprRelPrim: ( LESS | LESSEQ | GREATER | GREATEREQ ) exprAdd exprRelPrim | epsilon
 bool exprRelPrim(){
-	if(consume(LESS)||consume(LESSEQ)||consume(GREATER)||consume(GREATEREQ)){
+	if(consume(LESS)){
+		if(exprAdd()) return exprRelPrim();
+		tkerr("expression missing after relational operator");
+	}
+	else if(consume(LESSEQ)){
+		if(exprAdd()) return exprRelPrim();
+		tkerr("expression missing after relational operator");
+	}
+	else if(consume(GREATER)){
+		if(exprAdd()) return exprRelPrim();
+		tkerr("expression missing after relational operator");
+	}
+	else if(consume(GREATEREQ)){
 		if(exprAdd()) return exprRelPrim();
 		tkerr("expression missing after relational operator");
 	}
@@ -256,9 +353,12 @@ bool exprRel(){
 
 // exprEqPrim: ( EQUAL | NOTEQ ) exprRel exprEqPrim | epsilon
 bool exprEqPrim(){
-	if(consume(EQUAL)||consume(NOTEQ)){
+	if(consume(EQUAL)){
 		if(exprRel()) return exprEqPrim();
-		tkerr("expression missing after == or !=");
+		tkerr("expression missing after ==");
+	}else if(consume(NOTEQ)){
+		if(exprRel()) return exprEqPrim();
+		tkerr("expression missing after !=");
 	}
 	return true;
 }
@@ -318,15 +418,20 @@ bool expr(){
 }
 
 // stmCompound: LACC ( varDef | stm )* RACC
-bool stmCompound(){
+// AD: parametru newDomain controleaza daca se creeaza un domeniu nou
+bool stmCompound(bool newDomain){
 	Token *start=iTk;
 	if(consume(LACC)){
+		if(newDomain) pushDomain();
 		for(;;){
 			if(varDef()){}
 			else if(stm()){}
 			else break;
 		}
-		if(consume(RACC)) return true;
+		if(consume(RACC)){
+			if(newDomain) dropDomain();
+			return true;
+		}
 		tkerr("} missing at end of block");
 	}
 	iTk=start;
@@ -334,10 +439,11 @@ bool stmCompound(){
 }
 
 // stm: stmCompound | IF LPAR expr RPAR stm ( ELSE stm )? | WHILE LPAR expr RPAR stm | RETURN expr? SEMICOLON | expr? SEMICOLON
+// AD: stmCompound apelat cu true (blocurile if/while creeaza domenii noi)
 bool stm(){
 	Token *start=iTk;
 
-	if(stmCompound()) return true;
+	if(stmCompound(true)) return true;
 
 	if(consume(IF)){
 		if(consume(LPAR)){
@@ -386,22 +492,47 @@ bool stm(){
 }
 
 // fnDef: ( typeBase | VOID ) ID LPAR ( fnParam ( COMMA fnParam )* )? RPAR stmCompound
+// AD: verifica redefinire, adauga SK_FN, owner=fn, pushDomain
+//     stmCompound apelat cu false (corpul fn nu adauga domeniu nou)
 bool fnDef(){
 	Token *start=iTk;
-	bool hasType=typeBase();
-	if(!hasType&&!consume(VOID)){
-		iTk=start;
-		return false;
+	Type t;
+	bool hasType=typeBase(&t);
+	if(!hasType){
+		if(consume(VOID)){
+			t.tb=TB_VOID;
+			t.n=-1;
+			t.s=NULL;
+		} else {
+			iTk=start;
+			return false;
+		}
 	}
 	if(consume(ID)){
+		Token *tkName=consumedTk;
 		if(consume(LPAR)){
+			Symbol *fn=findSymbolInDomain(symTable,tkName->text);
+			if(fn) tkerr("symbol redefinition: %s",tkName->text);
+			fn=newSymbol(tkName->text,SK_FN);
+			fn->type=t;
+			addSymbolToDomain(symTable,fn);
+			owner=fn;
+			pushDomain();
+
 			if(fnParam()){
 				while(consume(COMMA)){
-					if(!fnParam()) tkerr("parameter missing after ,");
+					if(!fnParam()) tkerr("parameter missing or invalid after ,");
 				}
 			}
+			// else{
+			// 	tkerr("invalid or missing parameter");
+			// }
 			if(consume(RPAR)){
-				if(stmCompound()) return true;
+				if(stmCompound(false)) {
+					dropDomain();
+					owner=NULL;
+					return true;
+				}
 				tkerr("function body { } missing");
 			}
 			tkerr(") missing in function definition");
@@ -428,5 +559,8 @@ bool unit(){
 
 void parse(Token *tokens){
 	iTk=tokens;
+	pushDomain();
 	if(!unit()) tkerr("syntax error");
+	showDomain(symTable,"global");
+	dropDomain();
 }
