@@ -72,7 +72,7 @@ bool typeBase(Type *t){
 			Token *tkName=consumedTk;
 			t->tb=TB_STRUCT;
 			t->s=findSymbol(tkName->text);
-			if(!t->s) tkerr("structura nedefinita: %s",tkName->text);
+			if(!t->s) tkerr("undefined struct: %s",tkName->text);
 			return true;
 		}
 		tkerr("identifier missing after struct");
@@ -112,7 +112,7 @@ bool varDef(){
 			}
 			if(consume(SEMICOLON)){
 				Symbol *var=findSymbolInDomain(symTable,tkName->text);
-				if(var) tkerr("symbol redefinition: %s",tkName->text);
+				if(var) tkerr("symbol already exists: %s",tkName->text);
 				var=newSymbol(tkName->text,SK_VAR);
 				var->type=t;
 				var->owner=owner;
@@ -121,10 +121,12 @@ bool varDef(){
 					switch(owner->kind){
 						case SK_FN:
 							var->varIdx=symbolsLen(owner->fn.locals);
+							//calculeaza indexu
 							addSymbolToList(&owner->fn.locals,dupSymbol(var));
 							break;
 						case SK_STRUCT:
 							var->varIdx=typeSize(&owner->type);
+							//calculeaza offsetu
 							addSymbolToList(&owner->structMembers,dupSymbol(var));
 							break;
 						default: break;
