@@ -11,7 +11,7 @@ int main(){
         return 1;
     }
 
-    char *buffer = loadFile("tests/testad.c");
+    char *buffer = loadFile("tests/testat.c");
     Token *tks = tokenize(buffer);
     writeTokens(tks, fout);
     fclose(fout);

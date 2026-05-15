@@ -5,6 +5,7 @@
 
 #include "parser.h"
 #include "utils.h"
+#include "at.h"
 #include "ad.c"
 
 Token *iTk;
@@ -18,25 +19,25 @@ bool fnDef();
 bool varDef();
 bool stmCompound(bool newDomain);
 bool stm();
-bool expr();
-bool exprAssign();
-bool exprOr();
-bool exprOrPrim();
-bool exprAnd();
-bool exprAndPrim();
-bool exprEq();
-bool exprEqPrim();
-bool exprRel();
-bool exprRelPrim();
-bool exprAdd();
-bool exprAddPrim();
-bool exprMul();
-bool exprMulPrim();
-bool exprCast();
-bool exprUnary();
-bool exprPostfix();
-bool exprPostfixPrim();
-bool exprPrimary();
+bool expr(Ret *r);
+bool exprAssign(Ret *r);
+bool exprOr(Ret *r);
+bool exprOrPrim(Ret *r);
+bool exprAnd(Ret *r);
+bool exprAndPrim(Ret *r);
+bool exprEq(Ret *r);
+bool exprEqPrim(Ret *r);
+bool exprRel(Ret *r);
+bool exprRelPrim(Ret *r);
+bool exprAdd(Ret *r);
+bool exprAddPrim(Ret *r);
+bool exprMul(Ret *r);
+bool exprMulPrim(Ret *r);
+bool exprCast(Ret *r);
+bool exprUnary(Ret *r);
+bool exprPostfix(Ret *r);
+bool exprPostfixPrim(Ret *r);
+bool exprPrimary(Ret *r);
 bool typeBase(Type *t);
 bool arrayDecl(Type *t);
 bool fnParam();
@@ -205,28 +206,70 @@ bool fnParam(){
 	return false;
 }
 
-// exprPrimary: ID ( LPAR ( expr ( COMMA expr )* )? RPAR )?
-//            | INT | DOUBLE | CHAR | STRING | LPAR expr RPAR
-bool exprPrimary(){
+// AT: exprPrimary[out Ret *r]
+// ID[tkName] { s=findSymbol; if(!s) tkerr; }
+//   ( LPAR { if(s->kind!=SK_FN) tkerr; ... } ( expr[&rArg] ... )? RPAR { if(param) tkerr; *r={s->type,false,true}; }
+//   | { if(s->kind==SK_FN) tkerr; *r={s->type,true,s->type.n>=0}; }
+//   )
+// | INT   { *r={{TB_INT,NULL,-1},false,true}; }
+// | DOUBLE{ *r={{TB_DOUBLE,NULL,-1},false,true}; }
+// | CHAR  { *r={{TB_CHAR,NULL,-1},false,true}; }
+// | STRING{ *r={{TB_CHAR,NULL,0},false,true}; }
+// | LPAR expr[r] RPAR
+bool exprPrimary(Ret *r){
 	Token *start=iTk;
 	if(consume(ID)){
+		Token *tkName=consumedTk;
+		Symbol *s=findSymbol(tkName->text);
+		if(!s) tkerr("undefined id: %s",tkName->text);
 		if(consume(LPAR)){
-			if(expr()){
+			// apel de functie
+			if(s->kind!=SK_FN) tkerr("only a function can be called");
+			Ret rArg;
+			Symbol *param=s->fn.params;
+			if(expr(&rArg)){
+				if(!param) tkerr("too many arguments in function call");
+				if(!convTo(&rArg.type,&param->type))
+					tkerr("in call, cannot convert the argument type to the parameter type");
+				param=param->next;
 				while(consume(COMMA)){
-					if(!expr()) tkerr("expression missing after ,");
-					}
+					if(!expr(&rArg)) tkerr("expression missing after ,");
+					if(!param) tkerr("too many arguments in function call");
+					if(!convTo(&rArg.type,&param->type))
+						tkerr("in call, cannot convert the argument type to the parameter type");
+					param=param->next;
 				}
-			if(consume(RPAR)) return true;
+			}
+			if(param) tkerr("too few arguments in function call");
+			if(consume(RPAR)){
+				*r=(Ret){s->type,false,true};
+				return true;
+			}
 			tkerr(") missing in function call");
 		}
+		// nu e apel de functie - e variabila/parametru
+		if(s->kind==SK_FN) tkerr("a function can only be called");
+		*r=(Ret){s->type,true,s->type.n>=0};
 		return true;
 	}
-	if(consume(INT))    return true;
-	if(consume(DOUBLE)) return true;
-	if(consume(CHAR))   return true;
-	if(consume(STRING)) return true;
+	if(consume(INT)){
+		*r=(Ret){{TB_INT,NULL,-1},false,true};
+		return true;
+	}
+	if(consume(DOUBLE)){
+		*r=(Ret){{TB_DOUBLE,NULL,-1},false,true};
+		return true;
+	}
+	if(consume(CHAR)){
+		*r=(Ret){{TB_CHAR,NULL,-1},false,true};
+		return true;
+	}
+	if(consume(STRING)){
+		*r=(Ret){{TB_CHAR,NULL,0},false,true};
+		return true;
+	}
 	if(consume(LPAR)){
-		if(expr()){
+		if(expr(r)){
 			if(consume(RPAR)) return true;
 			tkerr(") missing after expression");
 		}
@@ -236,187 +279,324 @@ bool exprPrimary(){
 	return false;
 }
 
-// exprPostfixPrim: LBRACKET expr RBRACKET exprPostfixPrim | DOT ID exprPostfixPrim | epsilon
-bool exprPostfixPrim(){
+// AT: exprPostfixPrim[inout Ret *r]
+// LBRACKET expr[&idx] RBRACKET {
+//   if(r->type.n<0) tkerr("only an array can be indexed");
+//   if(!convTo(&idx.type,&tInt)) tkerr("index not convertible to int");
+//   r->type.n=-1; r->lval=true; r->ct=false;
+// } exprPostfixPrim[r]
+// | DOT ID[tkName] {
+//   if(r->type.tb!=TB_STRUCT) tkerr("field can only be selected from struct");
+//   s=findSymbolInList(r->type.s->structMembers, name); if(!s) tkerr;
+//   *r={s->type,true,s->type.n>=0};
+// } exprPostfixPrim[r]
+// | epsilon
+bool exprPostfixPrim(Ret *r){
 	if(consume(LBRACKET)){
-		if(expr()){
-			if(consume(RBRACKET)) return exprPostfixPrim();
+		Ret idx;
+		if(expr(&idx)){
+			if(r->type.n<0) tkerr("only an array can be indexed");
+			Type tInt={TB_INT,NULL,-1};
+			if(!convTo(&idx.type,&tInt)) tkerr("the index is not convertible to int");
+			r->type.n=-1;
+			r->lval=true;
+			r->ct=false;
+			if(consume(RBRACKET)) return exprPostfixPrim(r);
 			tkerr("] missing in indexing");
 		}
 		tkerr("invalid expression in indexing");
 	}
 	if(consume(DOT)){
-		if(consume(ID)) return exprPostfixPrim();
+		if(consume(ID)){
+			Token *tkName=consumedTk;
+			if(r->type.tb!=TB_STRUCT) tkerr("a field can only be selected from a struct");
+			Symbol *s=findSymbolInList(r->type.s->structMembers,tkName->text);
+			if(!s) tkerr("the structure %s does not have a field %s",r->type.s->name,tkName->text);
+			*r=(Ret){s->type,true,s->type.n>=0};
+			return exprPostfixPrim(r);
+		}
 		tkerr("field name missing after .");
 	}
 	return true;
 }
 
 // exprPostfix: exprPrimary exprPostfixPrim
-bool exprPostfix(){
-	if(exprPrimary()) return exprPostfixPrim();
+bool exprPostfix(Ret *r){
+	if(exprPrimary(r)) return exprPostfixPrim(r);
 	return false;
 }
 
-// exprUnary: ( SUB | NOT ) exprUnary | exprPostfix
-bool exprUnary(){
+// AT: exprUnary[out Ret *r]
+// ( SUB | NOT ) exprUnary[r] {
+//   if(!canBeScalar(r)) tkerr("unary - or ! must have a scalar operand");
+//   r->lval=false; r->ct=true;
+// }
+// | exprPostfix[r]
+bool exprUnary(Ret *r){
 	if(consume(SUB)){
-		if(exprUnary()) return true;
+		if(exprUnary(r)){
+			if(!canBeScalar(r)) tkerr("unary - or ! must have a scalar operand");
+			r->lval=false;
+			r->ct=true;
+			return true;
+		}
 		tkerr("expression missing after unary operator (SUB)");
 	}else if(consume(NOT)){
-		if(exprUnary()) return true;
+		if(exprUnary(r)){
+			if(!canBeScalar(r)) tkerr("unary - or ! must have a scalar operand");
+			r->lval=false;
+			r->ct=true;
+			return true;
+		}
 		tkerr("expression missing after unary operator(NOT)");
 	}
-	return exprPostfix();
+	return exprPostfix(r);
 }
 
-// exprCast: LPAR typeBase arrayDecl? RPAR exprCast | exprUnary
-// AD: typeBase si arrayDecl au nevoie de un Type t local
-bool exprCast(){
+// AT: exprCast[out Ret *r]
+// LPAR typeBase[&t] arrayDecl[&t]? RPAR exprCast[&op] {
+//   if(t.tb==TB_STRUCT) tkerr("cannot convert to a struct type");
+//   if(op.type.tb==TB_STRUCT) tkerr("cannot convert a struct");
+//   if(op.type.n>=0&&t.n<0) tkerr("an array can be converted only to another array");
+//   if(op.type.n<0&&t.n>=0) tkerr("a scalar can be converted only to another scalar");
+//   *r={t,false,true};
+// }
+// | exprUnary[r]
+bool exprCast(Ret *r){
 	Token *start=iTk;
 	if(consume(LPAR)){
 		Type t;
+		Ret op;
 		if(typeBase(&t)){
 			arrayDecl(&t);
 			if(consume(RPAR)){
-				if(exprCast()) return true;
+				if(exprCast(&op)){
+					if(t.tb==TB_STRUCT) tkerr("cannot convert to a struct type");
+					if(op.type.tb==TB_STRUCT) tkerr("cannot convert a struct");
+					if(op.type.n>=0&&t.n<0) tkerr("an array can be converted only to another array");
+					if(op.type.n<0&&t.n>=0) tkerr("a scalar can be converted only to another scalar");
+					*r=(Ret){t,false,true};
+					return true;
+				}
 				tkerr("expression missing after cast");
 			}
 			tkerr(") missing in cast expression");
 		}
 	}
 	iTk=start;
-	return exprUnary();
+	return exprUnary(r);
 }
 
-// exprMulPrim: ( MUL | DIV ) exprCast exprMulPrim | epsilon
-bool exprMulPrim(){
+// AT: exprMulPrim[inout Ret *r]
+// ( MUL | DIV ) exprCast[&right] {
+//   if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for * or /");
+//   *r={tDst,false,true};
+// } exprMulPrim[r]
+// | epsilon
+bool exprMulPrim(Ret *r){
 	if(consume(MUL)){
-		if(exprCast()) return exprMulPrim();
+		Ret right;
+		if(exprCast(&right)){
+			Type tDst;
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for * or /");
+			*r=(Ret){tDst,false,true};
+			return exprMulPrim(r);
+		}
 		tkerr("expression missing after *");
 	}
 	else if(consume(DIV)){
-		if(exprCast()) return exprMulPrim();
+		Ret right;
+		if(exprCast(&right)){
+			Type tDst;
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for * or /");
+			*r=(Ret){tDst,false,true};
+			return exprMulPrim(r);
+		}
 		tkerr("expression missing after /");
 	}
 	return true;
 }
 
 // exprMul: exprCast exprMulPrim
-bool exprMul(){
-	if(exprCast()) return exprMulPrim();
+bool exprMul(Ret *r){
+	if(exprCast(r)) return exprMulPrim(r);
 	return false;
 }
 
-// exprAddPrim: ( ADD | SUB ) exprMul exprAddPrim | epsilon
-bool exprAddPrim(){
+// AT: exprAddPrim[inout Ret *r]
+// ( ADD | SUB ) exprMul[&right] {
+//   if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for + or -");
+//   *r={tDst,false,true};
+// } exprAddPrim[r]
+// | epsilon
+bool exprAddPrim(Ret *r){
 	if(consume(ADD)){
-		if(exprMul()) return exprAddPrim();
+		Ret right;
+		if(exprMul(&right)){
+			Type tDst;
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for + or -");
+			*r=(Ret){tDst,false,true};
+			return exprAddPrim(r);
+		}
 		tkerr("expression missing after +");
 	}else if(consume(SUB)){
-		if(exprMul()) return exprAddPrim();
+		Ret right;
+		if(exprMul(&right)){
+			Type tDst;
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for + or -");
+			*r=(Ret){tDst,false,true};
+			return exprAddPrim(r);
+		}
 		tkerr("expression missing after -");
 	}
 	return true;
 }
 
 // exprAdd: exprMul exprAddPrim
-bool exprAdd(){
-	if(exprMul()) return exprAddPrim();
+bool exprAdd(Ret *r){
+	if(exprMul(r)) return exprAddPrim(r);
 	return false;
 }
 
-// exprRelPrim: ( LESS | LESSEQ | GREATER | GREATEREQ ) exprAdd exprRelPrim | epsilon
-bool exprRelPrim(){
-	if(consume(LESS)){
-		if(exprAdd()) return exprRelPrim();
-		tkerr("expression missing after relational operator");
-	}
-	else if(consume(LESSEQ)){
-		if(exprAdd()) return exprRelPrim();
-		tkerr("expression missing after relational operator");
-	}
-	else if(consume(GREATER)){
-		if(exprAdd()) return exprRelPrim();
-		tkerr("expression missing after relational operator");
-	}
-	else if(consume(GREATEREQ)){
-		if(exprAdd()) return exprRelPrim();
+// AT: exprRelPrim[inout Ret *r]
+// ( LESS | LESSEQ | GREATER | GREATEREQ ) exprAdd[&right] {
+//   if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for <,<=,>,>=");
+//   *r={{TB_INT,NULL,-1},false,true};
+// } exprRelPrim[r]
+// | epsilon
+bool exprRelPrim(Ret *r){
+	if(consume(LESS)||consume(LESSEQ)||consume(GREATER)||consume(GREATEREQ)){
+		Ret right;
+		if(exprAdd(&right)){
+			Type tDst;
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for <, <=, >, >=");
+			*r=(Ret){{TB_INT,NULL,-1},false,true};
+			return exprRelPrim(r);
+		}
 		tkerr("expression missing after relational operator");
 	}
 	return true;
 }
 
 // exprRel: exprAdd exprRelPrim
-bool exprRel(){
-	if(exprAdd()) return exprRelPrim();
+bool exprRel(Ret *r){
+	if(exprAdd(r)) return exprRelPrim(r);
 	return false;
 }
 
-// exprEqPrim: ( EQUAL | NOTEQ ) exprRel exprEqPrim | epsilon
-bool exprEqPrim(){
-	if(consume(EQUAL)){
-		if(exprRel()) return exprEqPrim();
-		tkerr("expression missing after ==");
-	}else if(consume(NOTEQ)){
-		if(exprRel()) return exprEqPrim();
-		tkerr("expression missing after !=");
+// AT: exprEqPrim[inout Ret *r]
+// ( EQUAL | NOTEQ ) exprRel[&right] {
+//   if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for == or !=");
+//   *r={{TB_INT,NULL,-1},false,true};
+// } exprEqPrim[r]
+// | epsilon
+bool exprEqPrim(Ret *r){
+	if(consume(EQUAL)||consume(NOTEQ)){
+		Ret right;
+		if(exprRel(&right)){
+			Type tDst;
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for == or !=");
+			*r=(Ret){{TB_INT,NULL,-1},false,true};
+			return exprEqPrim(r);
+		}
+		tkerr("expression missing after == or !=");
 	}
 	return true;
 }
 
 // exprEq: exprRel exprEqPrim
-bool exprEq(){
-	if(exprRel()) return exprEqPrim();
+bool exprEq(Ret *r){
+	if(exprRel(r)) return exprEqPrim(r);
 	return false;
 }
 
-// exprAndPrim: AND exprEq exprAndPrim | epsilon
-bool exprAndPrim(){
+// AT: exprAndPrim[inout Ret *r]
+// AND exprEq[&right] {
+//   if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for &&");
+//   *r={{TB_INT,NULL,-1},false,true};
+// } exprAndPrim[r]
+// | epsilon
+bool exprAndPrim(Ret *r){
 	if(consume(AND)){
-		if(exprEq()) return exprAndPrim();
+		Ret right;
+		if(exprEq(&right)){
+			Type tDst;
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for &&");
+			*r=(Ret){{TB_INT,NULL,-1},false,true};
+			return exprAndPrim(r);
+		}
 		tkerr("expression missing after &&");
 		}
 	return true;
 }
 
 // exprAnd: exprEq exprAndPrim
-bool exprAnd(){
-	if(exprEq()) return exprAndPrim();
+bool exprAnd(Ret *r){
+	if(exprEq(r)) return exprAndPrim(r);
 	return false;
 }
 
-// exprOrPrim: OR exprAnd exprOrPrim | epsilon
-bool exprOrPrim(){
+// AT: exprOrPrim[inout Ret *r]
+// OR exprAnd[&right] {
+//   if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for ||");
+//   *r={{TB_INT,NULL,-1},false,true};
+// } exprOrPrim[r]
+// | epsilon
+bool exprOrPrim(Ret *r){
 	if(consume(OR)){
-		if(exprAnd()) return exprOrPrim();
+		Ret right;
+		if(exprAnd(&right)){
+			Type tDst;
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for ||");
+			*r=(Ret){{TB_INT,NULL,-1},false,true};
+			return exprOrPrim(r);
+		}
 		tkerr("expression missing after ||");
 	}
 	return true;
 }
 
 // exprOr: exprAnd exprOrPrim
-bool exprOr(){
-	if(exprAnd()) return exprOrPrim();
+bool exprOr(Ret *r){
+	if(exprAnd(r)) return exprOrPrim(r);
 	return false;
 }
 
-// exprAssign: exprUnary ASSIGN exprAssign | exprOr
-bool exprAssign(){
+// AT: exprAssign[out Ret *r]
+// exprUnary[&rDst] ASSIGN exprAssign[r] {
+//   if(!rDst.lval) tkerr("the assign destination must be a left-value");
+//   if(rDst.ct) tkerr("the assign destination cannot be constant");
+//   if(!canBeScalar(&rDst)) tkerr("the assign destination must be scalar");
+//   if(!canBeScalar(r)) tkerr("the assign source must be scalar");
+//   if(!convTo(&r->type,&rDst.type)) tkerr("the assign source cannot be converted to destination");
+//   r->lval=false; r->ct=true;
+// }
+// | exprOr[r]
+bool exprAssign(Ret *r){
 	Token *start=iTk;
-	if(exprUnary()){
+	Ret rDst;
+	if(exprUnary(&rDst)){
 		if(consume(ASSIGN)){
-			if(exprAssign()) return true;
+			if(exprAssign(r)){
+				if(!rDst.lval) tkerr("the assign destination must be a left-value");
+				if(rDst.ct) tkerr("the assign destination cannot be constant");
+				if(!canBeScalar(&rDst)) tkerr("the assign destination must be scalar");
+				if(!canBeScalar(r)) tkerr("the assign source must be scalar");
+				if(!convTo(&r->type,&rDst.type)) tkerr("the assign source cannot be converted to destination");
+				r->lval=false;
+				r->ct=true;
+				return true;
+			}
 			tkerr("expression missing after =");
 		}
 	}
 	iTk=start;
-	return exprOr();
+	return exprOr(r);
 }
 
 // expr: exprAssign
-bool expr(){
-	return exprAssign();
+bool expr(Ret *r){
+	return exprAssign(r);
 }
 
 // stmCompound: LACC ( varDef | stm )* RACC
@@ -440,16 +620,26 @@ bool stmCompound(bool newDomain){
 	return false;
 }
 
-// stm: stmCompound | IF LPAR expr RPAR stm ( ELSE stm )? | WHILE LPAR expr RPAR stm | RETURN expr? SEMICOLON | expr? SEMICOLON
-// AD: stmCompound apelat cu true (blocurile if/while creeaza domenii noi)
+// AT: stm
+// stmCompound[true]
+// | IF LPAR expr[&rCond] { if(!canBeScalar(&rCond)) tkerr("the if condition must be a scalar value"); } RPAR stm (ELSE stm)?
+// | WHILE LPAR expr[&rCond] { if(!canBeScalar(&rCond)) tkerr("the while condition must be a scalar value"); } RPAR stm
+// | RETURN ( expr[&rExpr] {
+//     if(owner->type.tb==TB_VOID) tkerr("a void function cannot return a value");
+//     if(!canBeScalar(&rExpr)) tkerr("the return value must be a scalar value");
+//     if(!convTo(&rExpr.type,&owner->type)) tkerr("cannot convert the return expression type to the function return type");
+//   } | { if(owner->type.tb!=TB_VOID) tkerr("a non-void function must return a value"); } ) SEMICOLON
+// | expr[&rExpr]? SEMICOLON
 bool stm(){
 	Token *start=iTk;
+	Ret rCond,rExpr;
 
 	if(stmCompound(true)) return true;
 
 	if(consume(IF)){
 		if(consume(LPAR)){
-			if(expr()){
+			if(expr(&rCond)){
+				if(!canBeScalar(&rCond)) tkerr("the if condition must be a scalar value");
 				if(consume(RPAR)){
 					if(stm()){
 						if(consume(ELSE)){
@@ -468,7 +658,8 @@ bool stm(){
 
 	if(consume(WHILE)){
 		if(consume(LPAR)){
-			if(expr()){
+			if(expr(&rCond)){
+				if(!canBeScalar(&rCond)) tkerr("the while condition must be a scalar value");
 				if(consume(RPAR)){
 					if(stm()) return true;
 					tkerr("statement missing for while body");
@@ -481,12 +672,18 @@ bool stm(){
 	}
 
 	if(consume(RETURN)){
-		expr();
+		if(expr(&rExpr)){
+			if(owner->type.tb==TB_VOID) tkerr("a void function cannot return a value");
+			if(!canBeScalar(&rExpr)) tkerr("the return value must be a scalar value");
+			if(!convTo(&rExpr.type,&owner->type)) tkerr("cannot convert the return expression type to the function return type");
+		} else {
+			if(owner->type.tb!=TB_VOID) tkerr("a non-void function must return a value");
+		}
 		if(consume(SEMICOLON)) return true;
 		tkerr("; missing after return");
 	}
 
-	expr();
+	expr(&rExpr);
 	if(consume(SEMICOLON)) return true;
 
 	iTk=start;

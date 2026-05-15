@@ -7,6 +7,7 @@ struct S1{
 	int i;
 	double d[2];
 	char x;
+	int t[2];
 	};
 struct S1 p1;
 struct S1 vp[10];
