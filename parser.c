@@ -309,7 +309,7 @@ bool exprPostfix(Ret *r){
 bool exprUnary(Ret *r){
 	if(consume(SUB)){
 		if(exprUnary(r)){
-			if(!canBeScalar(r)) tkerr("unary - or ! must have a scalar operand");
+			if(!canBeScalar(r)) tkerr("unary - must have a scalar operand");
 			r->lval=false;
 			r->ct=true;
 			return true;
@@ -317,7 +317,7 @@ bool exprUnary(Ret *r){
 		tkerr("expression missing after unary operator (SUB)");
 	}else if(consume(NOT)){
 		if(exprUnary(r)){
-			if(!canBeScalar(r)) tkerr("unary - or ! must have a scalar operand");
+			if(!canBeScalar(r)) tkerr("unary ! must have a scalar operand");
 			r->lval=false;
 			r->ct=true;
 			return true;
@@ -423,11 +423,41 @@ bool exprAdd(Ret *r){
 
 
 bool exprRelPrim(Ret *r){
-	if(consume(LESS)||consume(LESSEQ)||consume(GREATER)||consume(GREATEREQ)){
+	if(consume(LESS)){
 		Ret right;
 		if(exprAdd(&right)){
 			Type tDst;
-			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for <, <=, >, >=");
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for <");
+			*r=(Ret){{TB_INT,NULL,-1},false,true};
+			return exprRelPrim(r);
+		}
+		tkerr("expression missing after relational operator");
+	}
+	else if(consume(LESSEQ)){
+		Ret right;
+		if(exprAdd(&right)){
+			Type tDst;
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for <=");
+			*r=(Ret){{TB_INT,NULL,-1},false,true};
+			return exprRelPrim(r);
+		}
+		tkerr("expression missing after relational operator");
+	}
+	else if(consume(GREATER)){
+		Ret right;
+		if(exprAdd(&right)){
+			Type tDst;
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for >");
+			*r=(Ret){{TB_INT,NULL,-1},false,true};
+			return exprRelPrim(r);
+		}
+		tkerr("expression missing after relational operator");
+	}
+	else if(consume(GREATEREQ)){
+		Ret right;
+		if(exprAdd(&right)){
+			Type tDst;
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for >=");
 			*r=(Ret){{TB_INT,NULL,-1},false,true};
 			return exprRelPrim(r);
 		}
@@ -444,15 +474,25 @@ bool exprRel(Ret *r){
 
 
 bool exprEqPrim(Ret *r){
-	if(consume(EQUAL)||consume(NOTEQ)){
+	if(consume(EQUAL)){
 		Ret right;
 		if(exprRel(&right)){
 			Type tDst;
-			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for == or !=");
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for ==");
 			*r=(Ret){{TB_INT,NULL,-1},false,true};
 			return exprEqPrim(r);
 		}
-		tkerr("expression missing after == or !=");
+		tkerr("expression missing after ==");
+	}
+	else if(consume(NOTEQ)){
+		Ret right;
+		if(exprRel(&right)){
+			Type tDst;
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for !=");
+			*r=(Ret){{TB_INT,NULL,-1},false,true};
+			return exprEqPrim(r);
+		}
+		tkerr("expression missing after !=");
 	}
 	return true;
 }
@@ -513,8 +553,8 @@ bool exprAssign(Ret *r){
 		if(consume(ASSIGN)){
 			if(exprAssign(r)){
 				if(!rDst.lval) tkerr("the assign destination must be a left-value");
-				if(rDst.ct) tkerr("the assign destination cannot be constant");
 				if(!canBeScalar(&rDst)) tkerr("the assign destination must be scalar");
+				if(rDst.ct) tkerr("the assign destination cannot be constant");
 				if(!canBeScalar(r)) tkerr("the assign source must be scalar");
 				if(!convTo(&r->type,&rDst.type)) tkerr("the assign source cannot be converted to destination");
 				r->lval=false;
