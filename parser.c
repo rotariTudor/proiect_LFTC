@@ -259,14 +259,13 @@ bool exprPrimary(Ret *r){
 		return true;
 	}
 	if(consume(LPAR)){
-		if(expr(r)){
-			if(consume(RPAR)) return true;
-			tkerr(") missing after expression");
-		}
-		tkerr("invalid expression after (");
-	}
-	iTk=start;
-	return false;
+    if(expr(r)){
+        if(consume(RPAR)) return true;
+        tkerr(") missing after expression");
+    }
+    iTk=start;
+    return false;
+}
 }
 
 
@@ -327,15 +326,6 @@ bool exprUnary(Ret *r){
 	return exprPostfix(r);
 }
 
-// AT: exprCast[out Ret *r]
-// LPAR typeBase[&t] arrayDecl[&t]? RPAR exprCast[&op] {
-//   if(t.tb==TB_STRUCT) tkerr("cannot convert to a struct type");
-//   if(op.type.tb==TB_STRUCT) tkerr("cannot convert a struct");
-//   if(op.type.n>=0&&t.n<0) tkerr("an array can be converted only to another array");
-//   if(op.type.n<0&&t.n>=0) tkerr("a scalar can be converted only to another scalar");
-//   *r={t,false,true};
-// }
-// | exprUnary[r]
 bool exprCast(Ret *r){
 	Token *start=iTk;
 	if(consume(LPAR)){
@@ -346,9 +336,9 @@ bool exprCast(Ret *r){
 			if(consume(RPAR)){
 				if(exprCast(&op)){
 					if(t.tb==TB_STRUCT) tkerr("cannot convert to a struct type");
-					if(op.type.tb==TB_STRUCT) tkerr("cannot convert a struct");
 					if(op.type.n>=0&&t.n<0) tkerr("an array can be converted only to another array");
 					if(op.type.n<0&&t.n>=0) tkerr("a scalar can be converted only to another scalar");
+					if(op.type.tb==TB_STRUCT) tkerr("cannot convert a struct");
 					*r=(Ret){t,false,true};
 					return true;
 				}
@@ -366,7 +356,7 @@ bool exprMulPrim(Ret *r){
 		Ret right;
 		if(exprCast(&right)){
 			Type tDst;
-			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for * or /");
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for *");
 			*r=(Ret){tDst,false,true};
 			return exprMulPrim(r);
 		}
@@ -376,7 +366,7 @@ bool exprMulPrim(Ret *r){
 		Ret right;
 		if(exprCast(&right)){
 			Type tDst;
-			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for * or /");
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for /");
 			*r=(Ret){tDst,false,true};
 			return exprMulPrim(r);
 		}
@@ -397,7 +387,7 @@ bool exprAddPrim(Ret *r){
 		Ret right;
 		if(exprMul(&right)){
 			Type tDst;
-			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for + or -");
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for +");
 			*r=(Ret){tDst,false,true};
 			return exprAddPrim(r);
 		}
@@ -406,7 +396,7 @@ bool exprAddPrim(Ret *r){
 		Ret right;
 		if(exprMul(&right)){
 			Type tDst;
-			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for + or -");
+			if(!arithTypeTo(&r->type,&right.type,&tDst)) tkerr("invalid operand type for -");
 			*r=(Ret){tDst,false,true};
 			return exprAddPrim(r);
 		}
@@ -553,8 +543,8 @@ bool exprAssign(Ret *r){
 		if(consume(ASSIGN)){
 			if(exprAssign(r)){
 				if(!rDst.lval) tkerr("the assign destination must be a left-value");
-				if(!canBeScalar(&rDst)) tkerr("the assign destination must be scalar");
 				if(rDst.ct) tkerr("the assign destination cannot be constant");
+				if(!canBeScalar(&rDst)) tkerr("the assign destination must be scalar");
 				if(!canBeScalar(r)) tkerr("the assign source must be scalar");
 				if(!convTo(&r->type,&rDst.type)) tkerr("the assign source cannot be converted to destination");
 				r->lval=false;
