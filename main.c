@@ -1,26 +1,41 @@
 #include <stdio.h>
 #include <stdlib.h>
+
 #include "lexer.h"
 #include "utils.h"
 #include "parser.h"
+#include "vm.h"
 
 int main(){
-    FILE *fout = fopen("testParser.txt","w");
-    if(!fout){
-        printf("Unable to open file to write.\n");
-        return 1;
-    }
+    // FILE *fout = fopen("testParser.txt","w");
+    // if(!fout){
+    //     printf("[ERR ] Unable to open file to write.\n");
+    //     return 1;
+    // }
 
     char *buffer = loadFile("tests/test_all_errors.c");
     Token *tks = tokenize(buffer);
-    writeTokens(tks, fout);
-    fclose(fout);
+    // writeTokens(tks, fout);
+    // fclose(fout);
 
-    printf("Tokenize process is done!\n");
+    printf("\n[INFO] Tokenize process is done!\n");
 
+    pushDomain();
+    vmInit();
     parse(tks);
-    printf("Parsing and domain analysis successful!\n");
+    // printf("Parsing and domain analysis successful!\n");
 
+    printf("\n[INFO] Running genTestProgram (int)\n");
+    Instr *testCode = genTestProgram();
+    run(testCode);
+
+    printf("\n[INFO] Running genTestProgram (int)\n");
+    Instr *testCode2 = genTestProgram2();
+    run(testCode2);
+
+    printf("\n[INFO] Succes!\n");
+
+    dropDomain();
     free(buffer);
     return 0;
 }
