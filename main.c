@@ -13,7 +13,7 @@ int main(){
     //     return 1;
     // }
 
-    char *buffer = loadFile("tests/test_all_errors.c");
+    char *buffer = loadFile("tests/fct_tr.c");
     Token *tks = tokenize(buffer);
     // writeTokens(tks, fout);
     // fclose(fout);

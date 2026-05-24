@@ -198,7 +198,7 @@ Token *tokenize(const char *pch){
 						tk=addTk(INT);
 						tk->i=atoi(start);
 					}
-				}else err("invalid char: %c (%d)",*pch,*pch);
+				}else err("invalid char: %c at line (%d)",*pch,line);
 		}
 	}
 }
