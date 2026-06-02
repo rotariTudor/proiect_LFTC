@@ -1,19 +1,22 @@
-#include <stdio.h>
-#include <stdlib.h>
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+#include<ctype.h>
 
-#include "lexer.h"
 #include "utils.h"
+#include "lexer.h"
 #include "parser.h"
+#include "ad.h"
 #include "vm.h"
 
 int main(){
-    // FILE *fout = fopen("testParser.txt","w");
+    // FILE *fout = fopen("testGenCod.txt","w");
     // if(!fout){
     //     printf("[ERR ] Unable to open file to write.\n");
     //     return 1;
     // }
 
-    char *buffer = loadFile("tests/fct_tr.c");
+    char *buffer = loadFile("tests/testgc.c");
     Token *tks = tokenize(buffer);
     // writeTokens(tks, fout);
     // fclose(fout);
@@ -23,18 +26,15 @@ int main(){
     pushDomain();
     vmInit();
     parse(tks);
-    // printf("Parsing and domain analysis successful!\n");
+    printf("Parsing and domain analysis successful!\n");
 
-    printf("\n[INFO] Running genTestProgram (int)\n");
-    Instr *testCode = genTestProgram();
-    run(testCode);
-
-    printf("\n[INFO] Running genTestProgram (int)\n");
-    Instr *testCode2 = genTestProgram2();
-    run(testCode2);
-
-    printf("\n[INFO] Succes!\n");
-
+    Symbol *symMain=findSymbolInDomain(symTable,"main");
+    if(!symMain)err("missing main function");
+    Instr *entryCode=NULL;
+    addInstr(&entryCode,OP_CALL)->arg.instr=symMain->fn.instr;
+    addInstr(&entryCode,OP_HALT);
+    run(entryCode);
+    
     dropDomain();
     free(buffer);
     return 0;
