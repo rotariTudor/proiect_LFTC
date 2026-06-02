@@ -1,2 +1,2 @@
-gcc -o main lexer.c parser.c utils.c at.c main.c
+gcc -o main lexer.c parser.c utils.c at.c vm.c gc.c main.c
 ./main
